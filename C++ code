@@ -1,0 +1,240 @@
+//Template Matching for Quality Control Application
+//Author: Alvaro Castro Martinez
+//Date: 2015-12-12
+
+#include <opencv2/highgui/highgui.hpp>
+#include <iostream>
+#include <opencv2/imgproc/imgproc.hpp>
+using namespace cv;
+using namespace std;
+
+string Ruta_Imagenes = "D:/ACM/Personal/Maestria en Ciencias Computacionales/Procesamiento Digital de Imagenes/Proyecto/Final Entregado/Sample Images/";
+string Nombre_Archivo_Template = "Sample1.jpg";
+int White_Percentage_Tolerance = 5; //Tolerance (in %) of White Percentage comparison for first evaluation (before Template Match)
+float Match_Percentage_Tolerance = 1.5; //Tolerance (in %) of matching with Template (after Template Match)
+
+Mat gray,image,dst,imagecopy,img_resize,ROI; // Grayscale image
+Mat Image_Result;
+Mat Testing_ROI;
+Mat ROI_Template;
+int ValueThreshold=120;
+int max_Threshold=240;
+int SizeFactor = 1;
+int OnesCounter, ZerosCounter = 0;
+int Matching_ROI = 0; //Number of pixels in white from Template ROI
+float White_Percentage;
+float Min_White_Percentage, Max_White_Percentage;
+int xMouse, yMouse, xMouseF, yMouseF = 0;
+int tempCoord =0;
+int xROI_CoordinateI, xROI_CoordinateF, yROI_CoordinateI, yROI_CoordinateF = 0;
+
+void imgThreshold( int, void* );
+void Test_Image( string NombreArchivo ){
+	Mat TS,TS_Processed;	
+	namedWindow("Testing_Sample", CV_WINDOW_AUTOSIZE);//Create window "Testing Sample"
+	TS = imread(Ruta_Imagenes+NombreArchivo, CV_LOAD_IMAGE_UNCHANGED);
+	imshow("Testing_Sample", TS); //Display the image
+	cvtColor(TS, TS_Processed, CV_RGB2GRAY);  // Convert original image to Grayscale
+	GaussianBlur(TS_Processed, TS_Processed, Size(3,3), 1.5, 1.5);
+	threshold(TS_Processed, TS_Processed, ValueThreshold, max_Threshold, CV_THRESH_BINARY);
+	//cout<<"Threshold: "<<ValueThreshold<<", "<<max_Threshold<<endl;	
+	imshow("Testing_Sample", TS_Processed); //Display the image
+	cout<<"     Testing image loaded "<<NombreArchivo<<"....."<<endl;	
+	//Getting area
+	TS_Processed(Rect(xROI_CoordinateI,yROI_CoordinateI,(xROI_CoordinateF-xROI_CoordinateI),(yROI_CoordinateF-yROI_CoordinateI))).copyTo(Testing_ROI);
+	rectangle(TS_Processed,Point(xROI_CoordinateI,yROI_CoordinateI),Point(xROI_CoordinateF,yROI_CoordinateF),Scalar(255,255,255),1,8);
+	imshow("Testing_Sample", TS_Processed); //Display the image
+	
+	namedWindow("Result", CV_WINDOW_AUTOSIZE);
+	OnesCounter = 0;
+	ZerosCounter = 0;
+	for (int i=0;i<Testing_ROI.rows;i++){			//Counting white pixels on Template ROI 
+		for(int j=0;j<Testing_ROI.cols;j++){	
+			if (Testing_ROI.at<uchar>(i,j) != 0) OnesCounter++;
+			else ZerosCounter++;
+		}
+	}
+	float White_Percentage_Test;	
+	White_Percentage_Test = ((float)OnesCounter / ((float)ZerosCounter+(float)OnesCounter))*100;
+	if ((White_Percentage_Test > Min_White_Percentage) && (White_Percentage_Test < Max_White_Percentage)){ //First evaluation: Check number of white pixels in ROI under test		
+		
+		ROI_Template = imread(Ruta_Imagenes+"ROI_Template.jpg", CV_LOAD_IMAGE_UNCHANGED); //Load image from Template file
+		bitwise_and(ROI_Template,Testing_ROI,Image_Result);	//Comparison between Template ROI and Testing ROI (Applying And between area and ROI_Template)		
+		imshow("Result", Image_Result);	
+		OnesCounter = 0;
+		ZerosCounter = 0;
+		for (int i=0;i<Image_Result.rows;i++){			//Counting white pixels on Result image after Match (AND) 
+			for(int j=0;j<Image_Result.cols;j++){	
+				if (Image_Result.at<uchar>(i,j) != 0) OnesCounter++;
+				else ZerosCounter++;
+			}
+		}
+		int Matching_Test;		
+		Matching_Test = OnesCounter;		
+		//Checking number of white pixels after matching with Template
+		if ((Matching_Test > (Matching_ROI - ((float)Matching_ROI/100)*(float)Match_Percentage_Tolerance)) && (Matching_Test < (Matching_ROI + ((float)Matching_ROI/100)*(float)Match_Percentage_Tolerance))){
+			cout<<"          Matching Template with current image......"<<((float)Matching_Test/(float)Matching_ROI)*100<<"% : PASS!!!"<<endl;
+		}
+		else{
+			cout<<"          Matching Template with current image......"<<((float)Matching_Test/(float)Matching_ROI)*100<<"% : FAIL"<<endl;//Reporting compatibility value
+		}
+	}
+	else{
+		bitwise_and(ROI_Template,Testing_ROI,Image_Result);	//Comparison between Template ROI and Testing ROI (Applying And between area and ROI_Template)		
+		imshow("Result", Image_Result);	
+		cout<<"          White pixels percentage minimum criteria: "<<White_Percentage_Test<<"% : FAIL"<<endl;//Reporting compatibility value
+	}
+}
+static void onMouse( int event, int x, int y, int, void* )
+{
+       switch (event)
+       {
+		   case CV_EVENT_MOUSEMOVE	   :  break;
+		   case CV_EVENT_LBUTTONDOWN   :
+				xMouse = x;
+				yMouse =y;
+				//cout<<"Left button clicked position: ("<<xMouse<<","<<yMouse<<")"<< endl;
+				break;
+		   case CV_EVENT_RBUTTONDOWN   :  break;
+		   case CV_EVENT_MBUTTONDOWN   :  break;
+		   case CV_EVENT_LBUTTONUP     :  			   
+				destroyWindow("ROI");
+				xMouseF = x;
+				yMouseF =y;
+				//cout<<"Release left button position: ("<<xMouseF<<","<<yMouseF<<")"<<endl;				
+				imshow("Original", dst); //Display the image cloned
+				dst.copyTo(image);
+				
+				if((xMouse!=xMouseF)||(yMouse!=yMouseF)){
+					if(xMouse>xMouseF){
+						xMouseF=tempCoord;
+						xMouseF=xMouse;
+						xMouse=tempCoord;
+					}				
+					if(yMouse>yMouseF){
+						yMouseF=tempCoord;
+						yMouseF=yMouse;
+						yMouse=tempCoord;
+					}
+					cout<<"          Selecting ROI for Template: ("<<xMouseF<<","<<yMouseF<<")"<<endl;
+					cout<<"          Press right button to store selected ROI for Template: ("<<xMouseF<<","<<yMouseF<<")"<<endl;					
+					image(Rect(xMouse,yMouse,(xMouseF-xMouse),(yMouseF-yMouse))).copyTo(ROI);
+					rectangle(image,Point(xMouse,yMouse),Point(xMouseF,yMouseF),Scalar(255,255,255),1,8);
+					imshow("Original", image); //Display the image
+					xROI_CoordinateI = xMouse;
+					xROI_CoordinateF = xMouseF;
+					yROI_CoordinateI = yMouse;
+					yROI_CoordinateF = yMouseF;
+					resize(ROI, img_resize, Size2i(ROI.cols*SizeFactor, ROI.rows*SizeFactor));
+					imshow("ROI", img_resize); //Display the image
+				}				
+				break;		   
+		   case CV_EVENT_RBUTTONUP     :  
+			    cout<<"     6) Saving ROI Template"<<endl;			    
+				imwrite(Ruta_Imagenes+"ROI_Template.jpg",img_resize);				
+				cout<<"          Template size: "<<img_resize.rows<<"x"<<img_resize.cols<< endl;
+				OnesCounter = 0;
+				ZerosCounter = 0;
+				for (int i=0;i<img_resize.rows;i++){			//Counting white pixels on Template ROI 
+					for(int j=0;j<img_resize.cols;j++){
+						if (img_resize.at<uchar>(i,j) != 0) OnesCounter++;
+						else ZerosCounter++;						
+					}
+				}				
+				Matching_ROI = OnesCounter;
+				White_Percentage = ((float)OnesCounter / ((float)ZerosCounter+(float)OnesCounter))*100;								
+				Max_White_Percentage = White_Percentage + ((White_Percentage / 100) * White_Percentage_Tolerance);
+				Min_White_Percentage = White_Percentage - ((White_Percentage / 100) * White_Percentage_Tolerance);
+				cout<<"          Number of white pixels: "<<Matching_ROI<<endl;
+				cout<<"          White Percentage: "<<White_Percentage<<"%"<<endl;
+				cout<<"          Tolerances: Min: "<<Min_White_Percentage<<" %; Max: "<<Max_White_Percentage<<" %"<<endl;
+			   break;
+		   case CV_EVENT_MBUTTONUP     :  break;
+		   case CV_EVENT_LBUTTONDBLCLK :  break;
+		   case CV_EVENT_RBUTTONDBLCLK :  break;
+		   case CV_EVENT_MBUTTONDBLCLK :  break;
+       }
+}
+int main(int argc, char** argv) {
+	image = imread(Ruta_Imagenes+Nombre_Archivo_Template, CV_LOAD_IMAGE_UNCHANGED); //Loading image "Golden" to get Template
+	if (image.empty()){ //Verify image load
+		cout << "Error: Image cannot be loaded..!!" << endl;
+		waitKey(0); //wait infinite time for a keypress
+		return -1;
+    }
+	namedWindow("Original", CV_WINDOW_AUTOSIZE);//Create window "Original"     
+	imshow("Original", image); //Display the image
+	cout<<"********** Starting Processing original image to get ROI Template ***********"<<endl;
+	cout<<"     1) Original image....................Presss any key to continue"<<endl;	
+	waitKey(0); //wait infinite time for a keypress
+	cvtColor(image, image, CV_RGB2GRAY);  // Convert original image to Grayscale
+	imshow("Original", image); //Display the image
+	cout<<"     2) Grayscale.........................Presss any key to continue"<<endl;
+	waitKey(0); //wait infinite time for a keypress	
+	GaussianBlur(image, image, Size(5,5), 1.5, 1.5);
+	imshow("Original", image); //Display the image
+	cout<<"     3) Applying GaussianBlur.................Presss any key to continue"<<endl;
+	waitKey(0); //wait infinite time for a keypress
+	createTrackbar( "Binarize", "Original", &ValueThreshold, max_Threshold, imgThreshold);
+	imgThreshold(0,0); //Threshold selected by user
+	//cout<<"Threshold: "<<ValueThreshold<<", "<<max_Threshold<<endl;
+	cout<<"     4) Applying Threshold (Move track bar to change threshold)..Presss any key to continue"<<endl;
+	namedWindow("ROI", CV_WINDOW_AUTOSIZE);
+	setMouseCallback("Original",onMouse,NULL);
+	waitKey(0); //wait infinite time for a keypress
+	cout<<"     5) Select the ROI using mouse"<<endl;
+	waitKey(0); //wait infinite time for a keypress	
+	destroyWindow("Original");
+	cout<<endl<<"********** Starting Test Process (Testing using different samples) **********"<<endl;
+	cout<<"Press any key to continue..."<<endl;
+	waitKey(0); //wait infinite time for a keypress			
+	cout<<"*****************************************************************************"<<endl<<endl;
+	
+//**********************Test 1**********************
+	//Nombre_Archivo_Template = "Sample1.jpg";
+	Test_Image("Sample1.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample2.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample3.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample4.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample7.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample5.jpg");		
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample8.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample14.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+
+	
+//**********************Test 2**********************
+	/*//Nombre_Archivo_Template = "Sample9.jpg";
+	Test_Image("Sample9.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample5.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample6.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample10.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample11.jpg");		
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample12.jpg");
+	waitKey(0); //wait infinite time for a keypress	
+	Test_Image("Sample13.jpg");
+	waitKey(0); //wait infinite time for a keypress
+	Test_Image("Sample7.jpg");
+	waitKey(0); //wait infinite time for a keypress*/
+
+	cout<<endl<<"Press any key to exit program..."<<endl;
+	waitKey(0); //wait infinite time for a keypress	
+	destroyAllWindows();
+    //return 0;
+}
+void imgThreshold(int,void*){
+	threshold(image, dst, ValueThreshold, max_Threshold, CV_THRESH_BINARY);
+	imshow("Original", dst); //Display Gray scale image
+}
